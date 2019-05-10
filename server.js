@@ -22,7 +22,7 @@ var canJump = true;
 var canWalkJump = true;
 var jumpVelocity = 5;
 var walkJumpVelocity = 0.5;
-var velocityFactor = 2;
+var velocityFactor = 0.5;
 var PI_2 = Math.PI / 2;
 var upAxis = new CANNON.Vec3(0,1,0);
 
@@ -35,9 +35,7 @@ io.on('connection', function(socket){
     var currentPlayer = {
         body: new CANNON.Body({mass: 5}),
         contactNormal: contactNormal,
-        camera: new THREE.PerspectiveCamera( 75, 1, 0.1, 1000 ),
-        pitchObject: new THREE.Object3D(),
-        yawObject: new THREE.Object3D(),
+        camera: new THREE.Object3D(),
         moveForward: false,
         moveLeft: false,
         moveBackward: false,
@@ -49,8 +47,7 @@ io.on('connection', function(socket){
         camera: {
             position: currentPlayer.camera.position,
             rotation: currentPlayer.camera.rotation,
-            quaternion: currentPlayer.camera.quaternion,
-            cam : currentPlayer.camera
+            quaternion: currentPlayer.camera.quaternion
         },
         body: {
             position: currentPlayer.body.position,
@@ -58,13 +55,14 @@ io.on('connection', function(socket){
             quaternion: currentPlayer.body.quaternion
         }
     };
+    /*
     currentPlayer.pitchObject.add(currentPlayer.camera);
     currentPlayer.yawObject.position.y = 2;
-    currentPlayer.yawObject.add( currentPlayer.pitchObject );
+    currentPlayer.yawObject.add( currentPlayer.pitchObject );*/
 
     currentPlayer.camera.position.set(10, 2, 0);
     currentPlayer.camera.lookAt(0, 2, 0);
-    var shape = new CANNON.Box(new CANNON.Vec3(1,1,1));
+    var shape = new CANNON.Sphere(0.7);
 
     currentPlayer.body.addShape(shape);
     currentPlayer.body.linearDamping = 0.9;
@@ -148,12 +146,19 @@ io.on('connection', function(socket){
     });
     socket.on('mouseMouve',(data)=>{
         var p = players.get(socket.id);
-        p.body.angularVelocity.x -= data.movementY/500;
-        p.body.angularVelocity.y -= data.movementX/500;
+        euler.setFromQuaternion( p.camera.quaternion );
+
+        euler.y -= data.movementX * 0.002;
+        euler.x -= data.movementY * 0.002;
+
+        euler.x = Math.max( - PI_2, Math.min( PI_2, euler.x ) );
+
+        p.camera.quaternion.setFromEuler( euler );
+        /*
         if ( canWalkJump && (data.movementX !== 0 || data.movementY !== 0) ){
             p.body.velocity.y = walkJumpVelocity;
             canWalkJump = false;
-        }
+        }*/
     });
 });
 
@@ -196,41 +201,44 @@ function update() {
     players.forEach((p,id)=>{
         //if ( scope.enabled === false ) return;
         var inputVelocity = new THREE.Vector3(0,0,0);
-        var euler = new THREE.Euler();
         var quat = new THREE.Quaternion();
-
+/*
         if ( canWalkJump && (p.moveForward || p.moveBackward || p.moveLeft || p.moveRight) ){
             p.body.velocity.y = walkJumpVelocity;
             canWalkJump = false;
-        }
+        }*/
         if ( p.moveForward ){
-            p.body.velocity.z = -velocityFactor * delta;
+            inputVelocity.z = -velocityFactor * delta;
         }
         if ( p.moveBackward ){
-            p.body.velocity.z = velocityFactor * delta;
+            inputVelocity.z = velocityFactor * delta;
         }
         if ( p.moveLeft ){
-            p.body.velocity.x = -velocityFactor * delta;
+            inputVelocity.x = -velocityFactor * delta;
         }
         if ( p.moveRight ){
-            p.body.velocity.x = velocityFactor * delta;
+            inputVelocity.x = velocityFactor * delta;
         }
 
         // Convert velocity to world coordinates
         /*
-        euler.x = p.pitchObject.rotation.x;
-        euler.y = p.yawObject.rotation.y;
+        euler.x = p.body.rotation.x;
+        euler.y = p.body.rotation.y;
         euler.order = "XYZ";
-        quat.setFromEuler(euler);
-        inputVelocity.applyQuaternion(quat);*/
+        quat.setFromEuler(euler);*/
+        /**/
+        inputVelocity.applyQuaternion(p.camera.quaternion);
         //quat.multiplyVector3(inputVelocity);
 
         // Add to the object
-        /*
+
         p.body.velocity.x += inputVelocity.x;
         p.body.velocity.z += inputVelocity.z;
-        p.yawObject.position.copy(p.body.position);
-    */
+        p.camera.position.copy(p.body.position);
+        p.camera.position.y += 1;
+        /*
+        p.yawObject.position.copy(p.body.position);*/
+
         sockets.get(id).emit('self',datas.get(id));
     });
     io.sockets.emit('players',Array.from(datas));

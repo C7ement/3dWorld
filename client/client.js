@@ -58,7 +58,7 @@ function init() {
     //Display all the players present before the client
     socket.on('initPlayers', (players)=>{
         (new Map(players)).forEach((p,id)=>{
-            var sphereGeometry = new THREE.BoxGeometry( 1,1,1 );
+            var sphereGeometry = new THREE.SphereGeometry(0.7,10,10);
             var material = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
             var mesh = new THREE.Mesh( sphereGeometry, material );
             scene.add( mesh );
@@ -105,8 +105,8 @@ function init() {
         pitchObject.position.copy(self.pitchObject.position);
         yawObject.rotation.copy(self.yawObject.rotation);
         pitchObject.rotation.copy(self.pitchObject.rotation);*/
-        camera.position.copy(self.body.position);
-        camera.quaternion.copy(self.body.quaternion);
+        camera.position.copy(self.camera.position);
+        camera.rotation.copy(self.camera.rotation);
         //camera.rotation.copy(self.body.rotation);
         //camera.quaternion.set(0,0,1);
         //console.log(camera.position);
