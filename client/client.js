@@ -3,11 +3,14 @@ var socket;
 var meshFloor;
 var meshCannon;
 
-var playersCube = new Map();
+var playersMap = new Map();
+
+//////
+var cubeMesh = new Map();
+var marker = false;
 
 
-
-//to fix
+var markerMaterial = new THREE.MeshLambertMaterial( { color: 0xff0000 } );
 window.addEventListener('resize', ()=> {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -16,107 +19,113 @@ window.addEventListener('resize', ()=> {
 
 window.addEventListener('keydown',(e)=>{
     socket.emit('keyDown',e.keyCode);
-    if (e.keyCode==78) {
-        addObjectToScene();
-    }
     e.preventDefault();
 }, false);
 window.addEventListener('keyup',(e)=>{
     socket.emit('keyUp',e.keyCode);
 }, false);
+window.addEventListener('mousedown',(e)=>{
+    socket.emit('onMouseDown',e);
+}, false);
+window.addEventListener('mouseup',(e)=>{
+    socket.emit('onMouseUp',e);
+}, false);
 
-function loadObject(x,y,z) {
-    var mtlLoader = new THREE.MTLLoader();
-    mtlLoader.load('texture/nature_pack/Models/naturePack_107.mtl', (materials)=>{
-        materials.preload();
-        var objLoader = new THREE.OBJLoader();
-        objLoader.setMaterials(materials);
-        objLoader.load('texture/nature_pack/Models/naturePack_107.obj', (mesh)=>{
-            mesh.traverse((node)=>{
-                node.castShadow = true;
-                node.receiveShadow = true;
-            });
-            scene.add(mesh);
-            mesh.position.set(x,y,z);
-        });
-    });
-}
-/*
-function addObjectToScene() {
-    var dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    var pos = camera.position;
-    if (dir.y <= 0) {
-        var coef = -pos.y / dir.y;
-        loadObject(pos.x + coef * dir.x, 0, pos.x + coef * dir.x);
-    }
-}*/
+
 function init() {
     initScene();
 
     socket = io.connect();
-    //Display all the players present before the client
-    socket.on('initPlayers', (players)=>{
-        (new Map(players)).forEach((p,id)=>{
-            var sphereGeometry = new THREE.SphereGeometry(0.7,10,10);
-            var material = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
-            var mesh = new THREE.Mesh( sphereGeometry, material );
-            scene.add( mesh );
-            mesh.position.copy(p.body.position);
-            mesh.quaternion.copy(p.body.quaternion);
-            mesh.receiveShadow = true;
-            mesh.castShadow = true;
-            playersCube.set(id,mesh);
-            //scene.add(mesh);
-            renderer.render(scene, camera);
-        });
-    });
-    //Display a new player
-    socket.on('newPlayer', (data)=>{
-        var sphereGeometry = new THREE.SphereGeometry( 0.7, 10, 10 );
-        var material = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
-        var mesh = new THREE.Mesh( sphereGeometry, material );
-        scene.add( mesh );
-        mesh.position.set(data.p.body.position);
-        mesh.quaternion.copy(p.body.quaternion);
-        mesh.receiveShadow = true;
-        mesh.castShadow = true;
-        playersCube.set(data.id,mesh);
-        //scene.add(mesh);
-        renderer.render(scene, camera);
-    });
-//Update the position of every player
+
+    //Update the position of all the players
     socket.on('players', (players)=>{
         (new Map(players)).forEach((p,id)=>{
-            playersCube.get(id).position.copy(p.body.position);
-            playersCube.get(id).quaternion.copy(p.body.quaternion);
+            if(playersMap.has(id)) {
+                playersMap.get(id).position.copy(p.body.position);
+                playersMap.get(id).quaternion.copy(p.body.quaternion);
+                if (id == socket.id) {
+                    camera.position.copy(p.camera.position);
+                    camera.rotation.copy(p.camera.rotation);
+                }
+            } else {
+                let sphereGeometry = new THREE.SphereGeometry( 0.7, 10, 10 );
+                let material = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
+                let mesh = new THREE.Mesh( sphereGeometry, material );
+                mesh.receiveShadow = true;
+                mesh.castShadow = true;
+                scene.add( mesh );
+                mesh.position.copy(p.body.position);
+                mesh.quaternion.copy(p.body.quaternion);
+                playersMap.set(id,mesh);
+                renderer.render(scene, camera);
+            }
         });
-        renderer.render(scene,camera);
-    });
-
-    socket.on('body', (data)=>{
-        meshCannon.position.copy(data.position);
-        meshCannon.quaternion.copy(data.quaternion);
-
-        renderer.render(scene,camera);
-    });
-    socket.on('self', (self)=>{/*
-        yawObject.position.copy(self.yawObject.position);
-        pitchObject.position.copy(self.pitchObject.position);
-        yawObject.rotation.copy(self.yawObject.rotation);
-        pitchObject.rotation.copy(self.pitchObject.rotation);*/
-        camera.position.copy(self.camera.position);
-        camera.rotation.copy(self.camera.rotation);
-        //camera.rotation.copy(self.body.rotation);
-        //camera.quaternion.set(0,0,1);
-        //console.log(camera.position);
-        //camera.position.set(10,2,0);
-        //camera.lookAt(0,0,0);
         renderer.render(scene,camera);
     });
     socket.on('playerLeaving', (id)=>{
-        scene.remove(playersCube.get(id));
+        scene.remove(playersMap.get(id));
         renderer.render(scene,camera);
+    });
+    /////
+    socket.on('mesh',(mesh)=>{
+        if(cubeMesh.has(mesh.id)) {
+            cubeMesh.get(mesh.id).position.copy(mesh.position);
+            cubeMesh.get(mesh.id).quaternion.copy(mesh.quaternion);
+            renderer.render(scene, camera);
+        } else {
+            var cubeGeo = new THREE.BoxGeometry( 1, 1, 1, 10, 10 );
+            var cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x0000ff, wireframe: false } );
+            var newMesh =  new THREE.Mesh(cubeGeo, cubeMaterial);
+            cubeMesh.set(mesh.id,newMesh);
+            scene.add(newMesh);
+            newMesh.castShadow = true;
+        }
+    });
+    socket.on('marker',(mesh)=>{
+        if(marker) {
+            marker.position.copy(mesh.position);
+            marker.visible = mesh.visible;
+            renderer.render(scene, camera);
+        } else {
+            var shape = new THREE.SphereGeometry(0.2, 8, 8);
+            marker = new THREE.Mesh(shape, markerMaterial);
+            scene.add(marker);
+            cubeMesh.castShadow = true;
+        }
+    });
+    var cannonRay = false;
+    var rayshape = new THREE.SphereGeometry(0.1, 8, 8);
+    var fromMaterial = new THREE.MeshLambertMaterial( { color: 0xff00ff } );
+    var toMaterial = new THREE.MeshLambertMaterial( { color: 0x00ffff } );
+    socket.on('cannonRay',(inputRay)=>{
+        if (!cannonRay) {
+            cannonRay = {
+                from: new THREE.Mesh(rayshape,fromMaterial),
+                to: new THREE.Mesh(rayshape,toMaterial)
+            };
+            scene.add(cannonRay.from);
+            scene.add(cannonRay.to);
+        }
+        cannonRay.from.position.copy(inputRay.from);
+        cannonRay.to.position.copy(inputRay.to);
+    });
+    var threeRay = false;
+    socket.on('threeRay',(inputRay)=>{
+        if (!threeRay) {
+            threeRay = {
+                from: new THREE.Mesh(rayshape,fromMaterial),
+                to: new THREE.Mesh(rayshape,toMaterial)
+            };
+            scene.add(threeRay.from);
+            scene.add(threeRay.to);
+        }
+        threeRay.from.position.copy(inputRay.origin);
+        var to = new THREE.Vector3();
+        to.copy(inputRay.direction);
+        to.multiplyScalar(2);
+        to.add(inputRay.origin);
+        threeRay.to.position.copy(to);
+        console.log(to);
     });
 }
 
@@ -124,52 +133,13 @@ function init() {
 function initScene() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    /*pitchObject = new THREE.Object3D();
-    pitchObject.add(camera);
-    yawObject = new THREE.Object3D();
-    yawObject.position.y = 2;
-    yawObject.add(pitchObject);*/
-    //camera.position.set(10, 2, 0);
-    //camera.lookAt(0, 2, 0);
     scene.add(camera);
-    //CONTROLS
-    //controls = new THREE.PointerLockControls( camera );
-    /*
-    var blocker = document.getElementById( 'blocker' );
-    var instructions = document.getElementById( 'instructions' );
-    instructions.addEventListener( 'click', function () {
-        controls.lock();
-    }, false );
-    controls.addEventListener( 'lock', function () {
-        instructions.style.display = 'none';
-        blocker.style.display = 'none';
-    } );
-    controls.addEventListener( 'unlock', function () {
-        blocker.style.display = 'block';
-        instructions.style.display = '';
-    } );
-    scene.add( controls.getObject() );*/
-
-    //SKYBOX
-
-    scene.background = new THREE.CubeTextureLoader()
-        .setPath('skybox/ashcanyon')
-        .load([
-            '_bk.tga',
-            '_ft.tga',
-            '_up.tga',
-            '_dn.tga',
-            '_rt.tga',
-            '_lf.tga'
-        ]);
-
-    //SKYBOX
-
 
     meshFloor = new THREE.Mesh(
         new THREE.PlaneGeometry(10, 10, 10, 10),
         new THREE.MeshPhongMaterial({color: 0xffffff, wireframe: false})
     );
+    meshFloor.receiveShadow = true;
     meshFloor.rotation.x -= Math.PI / 2;
     meshFloor.receiveShadow = true;
     scene.add(meshFloor);
@@ -202,15 +172,8 @@ function initScene() {
     crate.castShadow = true;
     scene.add(crate);
 
+//////////////////////
 
-    //camera.position.set(0, 1.8, -5);
-    //camera.lookAt(new THREE.Vector3(0, 1.1, 0));
-
-    //bodyTEST
-    var geometry = new THREE.BoxGeometry(2, 2, 2);
-    var material = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true});
-    meshCannon = new THREE.Mesh(geometry, material);
-    scene.add(meshCannon);
 
     renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -222,27 +185,17 @@ function initScene() {
     renderer.render(scene, camera);
 
     setInterval(() => {
-        socket.emit('mouseMouve', controls.getMovement());
-    }, 1 / 120);
+        socket.emit('mouseMove', controls.getMovement());
+    }, 1000 / 60);
 
 }
 
 //--------------------------------------------- POINTER LOCK ---------------------------------------------//
 
 
-
-/*
-window.addEventListener('mousemove', (e)=>{
-    if ( controls.enabled === false ) return;
-    var movementX = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
-    var movementY = e.movementY || e.mozMovementY || e.webkitMovementY || 0;
-    controls.dispatchEvent( changeEvent );
-}, false);*/
-
 function initPointerLock() {
 
-    controls = new THREE.PointerLockControls(socket);
-
+    controls = new THREE.PointerLockControls();
 
     var blocker = document.getElementById( 'blocker' );
     var instructions = document.getElementById( 'instructions' );

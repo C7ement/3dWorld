@@ -7,169 +7,131 @@ var path = require('path');
 var CANNON = require('cannon');
 var THREE = require('three');
 
-var players = new Map();
-var datas = new Map();
-var sockets = new Map();
-var contactNormals = new Map();
+var CyberWorld = require('./cyberWorld/CyberWorld');
 
 var htmlPath = path.join(__dirname, 'client');
 app.use(express.static(htmlPath));
 
-var world, mass, shape, timeStep=1/60,
-    camera, scene, renderer, geometry, material, mesh;
+var players = new Map();
+var datas = new Map();
+var clickMarkers = new Map();
 
-var canJump = true;
-var canWalkJump = true;
-var jumpVelocity = 5;
-var walkJumpVelocity = 0.5;
-var velocityFactor = 0.5;
-var PI_2 = Math.PI / 2;
-var upAxis = new CANNON.Vec3(0,1,0);
+var clickMarker = new CyberWorld.ClickMarker;
+var world, mass;
 
-var gravity = -1.81;
+var gravity = -5.81;
+var deltaUpdate = 1000/60;
+var  timeStep=1/60;
 
-io.on('connection', function(socket){
-    var contactNormal = new CANNON.Vec3();
+/////////
+
+var meshes=[], bodies=[];
+
+var mouseConstraint =false;
+var jointBody;
+var constraintDown = false;
 
 
-    var currentPlayer = {
-        body: new CANNON.Body({mass: 5}),
-        contactNormal: contactNormal,
-        camera: new THREE.Object3D(),
-        moveForward: false,
-        moveLeft: false,
-        moveBackward: false,
-        moveRight: false,
-        mouseX: 0,
-        mouseY: 0,
-    };
-    var data = {
-        camera: {
-            position: currentPlayer.camera.position,
-            rotation: currentPlayer.camera.rotation,
-            quaternion: currentPlayer.camera.quaternion
-        },
-        body: {
-            position: currentPlayer.body.position,
-            rotation: currentPlayer.body.rotation,
-            quaternion: currentPlayer.body.quaternion
-        }
-    };
-    /*
-    currentPlayer.pitchObject.add(currentPlayer.camera);
-    currentPlayer.yawObject.position.y = 2;
-    currentPlayer.yawObject.add( currentPlayer.pitchObject );*/
+io.on('connection', function(socket) {
 
-    currentPlayer.camera.position.set(10, 2, 0);
-    currentPlayer.camera.lookAt(0, 2, 0);
-    var shape = new CANNON.Sphere(0.7);
 
-    currentPlayer.body.addShape(shape);
-    currentPlayer.body.linearDamping = 0.9;
-    currentPlayer.body.angularDamping = 0.9;
-    currentPlayer.body.position.set(0,10,0);
-    currentPlayer.body.addEventListener("collide",function(e){
-        var contact = e.contact;
-        // contact.bi and contact.bj are the colliding bodies, and contact.ni is the collision normal.
-        // We do not yet know which one is which! Let's check.
-        if(contact.bi.id == currentPlayer.body.id) { // bi is the player body, flip the contact normal
-            contact.ni.negate(contactNormals.get(currentPlayer.body.id));
-        } else {
-            contactNormals.get(currentPlayer.body.id).copy(contact.ni); // bi is something else. Keep the normal as it is
-        }
-        // If contactNormal.dot(upAxis) is between 0 and 1, we know that the contact normal is somewhat in the up direction.
-        if(contactNormals.get(currentPlayer.body.id).dot(upAxis) > 0.5) {// Use a "good" threshold value between 0 and 1 here!
-            canJump = true;
-            canWalkJump = true;
-        }
-    });
-    world.addBody(currentPlayer.body);
+    let player = new CyberWorld.BasicPlayer(world, meshes, bodies);
+    world.addBody(player.body);
 
-    sockets.set(socket.id,socket);
-    players.set(socket.id,currentPlayer);
-    datas.set(socket.id,data);
-    contactNormals.set(currentPlayer.body.id,new CANNON.Vec3());
-    socket.emit('initPlayers',Array.from(datas));
-    socket.broadcast.emit('newPlayer',{p: data,id: socket.id});
+    players.set(socket.id, player);
+    datas.set(socket.id, player.data);
+
     socket.on('disconnect', () => {
         players.delete(socket.id);
-        sockets.delete(socket.id);
-        socket.broadcast.emit('playerLeaving',socket.id);
+        datas.delete(socket.id);
+        socket.broadcast.emit('playerLeaving', socket.id);
     });
-    socket.on('keyUp',(keyCode)=> {
-        var p = players.get(socket.id);
-        switch (keyCode) {
-            case 38: // up
-            case 90: // z
-                p.moveForward = false;
-                break;
-            case 37: // left
-            case 81: // q
-                p.moveLeft = false;
-                break;
-            case 40: // down
-            case 83: // s
-                p.moveBackward = false;
-                break;
-            case 39: // right
-            case 68: // d
-                p.moveRight = false;
-                break;
+    socket.on('keyUp', (keyCode) => {
+        player.keyUp(keyCode);
+    });
+    socket.on('keyDown', (keyCode) => {
+        player.keyDown(keyCode);
+    });
+    socket.on('mouseMove', (data) => {
+        player.mouseMove(data);
+        if (mouseConstraint) {
+            let pos = new THREE.Vector3();
+            let dir = new THREE.Vector3();
+            player.camera.getWorldPosition(pos);
+            player.camera.getWorldDirection(dir);
+            dir.negate();
+            var from = new CANNON.Vec3(pos.x,pos.y,pos.z);
+            var to =  new CANNON.Vec3(dir.x,dir.y,dir.z);
+            to = to.scale(distance);
+            to = to.vadd(player.getCannonRay().from);
+            if (to) {
+                clickMarker.set(to);
+                socket.emit('marker',clickMarker.data);
+                moveJointToPoint(to);
+            }
         }
     });
-    socket.on('keyDown',(keyCode)=>{
-        var p = players.get(socket.id);
-        switch (keyCode) {
-            case 38: // up
-            case 90: // z
-                p.moveForward = true;
-                break;
-            case 37: // left
-            case 81: // q
-                p.moveLeft = true;
-                break;
-            case 40: // down
-            case 83: // s
-                p.moveBackward = true;
-                break;
-            case 39: // right
-            case 68: // d
-                p.moveRight = true;
-                break;
-            case 32: // space
-                if ( canJump === true ){
-                    p.body.velocity.y = jumpVelocity;
-                }
-                canJump = false;
-                break;
+    var distance;
+    socket.on('onMouseDown', (e) => {
+        // Find mesh from a ray
+        var result = bodyInFront(player,meshes);
+        if (result) {
+            var point = result.hitPointWorld;
+            constraintDown = true;
+            clickMarker.set(point);
+            socket.emit('marker',clickMarker.data);
+            distance = player.camera.position.distanceTo(new THREE.Vector3(point.x,point.y,point.z));
+            addMouseConstraint(point, result.body);
+
         }
     });
-    socket.on('mouseMouve',(data)=>{
-        var p = players.get(socket.id);
-        euler.setFromQuaternion( p.camera.quaternion );
-
-        euler.y -= data.movementX * 0.002;
-        euler.x -= data.movementY * 0.002;
-
-        euler.x = Math.max( - PI_2, Math.min( PI_2, euler.x ) );
-
-        p.camera.quaternion.setFromEuler( euler );
-        /*
-        if ( canWalkJump && (data.movementX !== 0 || data.movementY !== 0) ){
-            p.body.velocity.y = walkJumpVelocity;
-            canWalkJump = false;
-        }*/
+    socket.on('onMouseUp', (e) => {
+        constraintDown = false;
+        clickMarkers.delete(socket.id);
+        clickMarker.remove();
+        removeJointConstraint();
     });
+
+    let moveJointToPoint = function(point) {
+        jointBody.position.copy(point);
+        mouseConstraint.update();
+    };
+    let removeJointConstraint = function(){
+        world.removeConstraint(mouseConstraint);
+        mouseConstraint = false;
+    };
+
+
+    let addMouseConstraint = function(position,constrainedBody) {
+        let v1 = position.vsub(constrainedBody.position);
+        let antiRot = constrainedBody.quaternion.inverse();
+        let pivot = antiRot.vmult(v1);
+        jointBody.position.copy(position);
+        mouseConstraint = new CANNON.PointToPointConstraint(constrainedBody, pivot, jointBody, new CANNON.Vec3(0,0,0));
+        world.addConstraint(mouseConstraint);
+    };
+
+    let bodyInFront = function() {
+        let ray = player.getCannonRay();
+        let result = new CANNON.RaycastResult();
+        ray.intersectBodies(bodies,result);
+        if (result.body != null) {
+            return result;
+        } else {
+            return false;
+        }
+    };
+
+
 });
-
-var euler = new THREE.Euler( 0, 0, 0, 'YXZ' );
 
 server.listen(3000, function(){
     console.log('listening on *:3000');
 });
-var bodyTest;
 
 function initCannon() {
+
+
     world = new CANNON.World();
     world.gravity.set(0,gravity,0);
     world.broadphase = new CANNON.NaiveBroadphase();
@@ -180,71 +142,47 @@ function initCannon() {
     groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0),-Math.PI/2);
     world.add(groundBody);
 
-    shape = new CANNON.Box(new CANNON.Vec3(1,1,1));
-    mass = 1;
-    bodyTest = new CANNON.Body({
-        mass: 1
-    });
-    bodyTest.addShape(shape);
+    //CREAT BOXES
+    var mass = 5, radius = 1.3;
+    var boxShape = new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5));
 
-    bodyTest.angularVelocity.set(0,1,0);
-    bodyTest.linearDamping = 0.5;
-    bodyTest.position.set(0,10,0);
-    world.addBody(bodyTest);
+    ////
+    var boxBody = new CANNON.Body({ mass: 1 });
+    boxBody.addShape(boxShape);
+    boxBody.position.set(1,3,3);
+    boxBody.linearDamping = 0.5;
+    world.addBody(boxBody);
+    bodies.push(boxBody);
+    boxBody = new CANNON.Body({ mass: 1 });
+    boxBody.addShape(boxShape);
+    boxBody.position.set(-3,3,3);
+    boxBody.angularDamping = 1;
+    world.addBody(boxBody);
+    bodies.push(boxBody);
+
+
+    // Joint body
+    var shape = new CANNON.Sphere(0.1);
+    jointBody = new CANNON.Body({ mass: 0 });
+    jointBody.addShape(shape);
+    jointBody.collisionFilterGroup = 0;
+    jointBody.collisionFilterMask = 0;
+    world.addBody(jointBody);
+
 
 }
 
 function update() {
-    var delta =1000/60* 0.1;
     world.step(timeStep);
-
-    players.forEach((p,id)=>{
-        //if ( scope.enabled === false ) return;
-        var inputVelocity = new THREE.Vector3(0,0,0);
-        var quat = new THREE.Quaternion();
-/*
-        if ( canWalkJump && (p.moveForward || p.moveBackward || p.moveLeft || p.moveRight) ){
-            p.body.velocity.y = walkJumpVelocity;
-            canWalkJump = false;
-        }*/
-        if ( p.moveForward ){
-            inputVelocity.z = -velocityFactor * delta;
-        }
-        if ( p.moveBackward ){
-            inputVelocity.z = velocityFactor * delta;
-        }
-        if ( p.moveLeft ){
-            inputVelocity.x = -velocityFactor * delta;
-        }
-        if ( p.moveRight ){
-            inputVelocity.x = velocityFactor * delta;
-        }
-
-        // Convert velocity to world coordinates
-        /*
-        euler.x = p.body.rotation.x;
-        euler.y = p.body.rotation.y;
-        euler.order = "XYZ";
-        quat.setFromEuler(euler);*/
-        /**/
-        inputVelocity.applyQuaternion(p.camera.quaternion);
-        //quat.multiplyVector3(inputVelocity);
-
-        // Add to the object
-
-        p.body.velocity.x += inputVelocity.x;
-        p.body.velocity.z += inputVelocity.z;
-        p.camera.position.copy(p.body.position);
-        p.camera.position.y += 1;
-        /*
-        p.yawObject.position.copy(p.body.position);*/
-
-        sockets.get(id).emit('self',datas.get(id));
-    });
-    io.sockets.emit('players',Array.from(datas));
-    io.sockets.emit('body',{position: bodyTest.position, quaternion: bodyTest.quaternion});
+    for (var i in bodies) {
+        io.sockets.emit('mesh', {id: bodies[i].id, position: bodies[i].position, quaternion: bodies[i].quaternion});
+    }
+    io.sockets.emit('players', Array.from(datas));
+    io.sockets.emit('marker',clickMarker.data);
 }
 
-
 initCannon();
-setInterval(update, 1000 / 60);
+setInterval(update, deltaUpdate);
+
+
+//Mouse pick

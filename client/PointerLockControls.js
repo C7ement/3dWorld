@@ -1,6 +1,8 @@
 /**
  * @author mrdoob / http://mrdoob.com/
  * @author Mugen87 / https://github.com/Mugen87
+ *
+ * @author C7ement / https://github.com/c7ement
  */
 
 THREE.PointerLockControls = function (domElement) {
@@ -31,17 +33,6 @@ THREE.PointerLockControls = function (domElement) {
 
         movementX += event.movementX || event.mozMovementX || event.webkitMovementX || 0;
         movementY += event.movementY || event.mozMovementY || event.webkitMovementY || 0;
-
-/*
-        euler.setFromQuaternion( camera.quaternion );
-
-        euler.y -= movementX * 0.002;
-        euler.x -= movementY * 0.002;
-
-        euler.x = Math.max( - PI_2, Math.min( PI_2, euler.x ) );
-
-        camera.quaternion.setFromEuler( euler );
-*/
 
         scope.dispatchEvent( changeEvent );
 
@@ -92,25 +83,7 @@ THREE.PointerLockControls = function (domElement) {
         this.disconnect();
 
     };
-/*
-    this.getObject = function () { // retaining this method for backward compatibility
 
-        return camera;
-
-    };*/
-/*
-    this.getDirection = function () {
-
-        var direction = new THREE.Vector3( 0, 0, - 1 );
-
-        return function ( v ) {
-
-            return v.copy( direction ).applyQuaternion( camera.quaternion );
-
-        };
-
-    }();
-*/
     this.getMovement = function () {
         data = {movementX: movementX, movementY: movementY};
         movementX = 0;
