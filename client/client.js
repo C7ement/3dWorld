@@ -6,7 +6,7 @@ var meshCannon;
 var playersMap = new Map();
 
 //////
-var cubeMesh = new Map();
+var meshMap = new Map();
 var marker = false;
 
 
@@ -67,30 +67,48 @@ function init() {
         renderer.render(scene,camera);
     });
     /////
+    /*
     socket.on('mesh',(mesh)=>{
         if(cubeMesh.has(mesh.id)) {
             cubeMesh.get(mesh.id).position.copy(mesh.position);
             cubeMesh.get(mesh.id).quaternion.copy(mesh.quaternion);
             renderer.render(scene, camera);
         } else {
-            var cubeGeo = new THREE.BoxGeometry( 1, 1, 1, 10, 10 );
-            var cubeMaterial = new THREE.MeshBasicMaterial( { color: 0x0000ff, wireframe: false } );
-            var newMesh =  new THREE.Mesh(cubeGeo, cubeMaterial);
-            cubeMesh.set(mesh.id,newMesh);
-            scene.add(newMesh);
-            newMesh.castShadow = true;
+            var ballGeometry = new THREE.SphereGeometry(0.2, 32, 32);
+            var material = new THREE.MeshLambertMaterial( { color: 0xdddddd } );
+            var ballMesh = new THREE.Mesh( ballGeometry, material);
+            cubeMesh.set(mesh.id,ballMesh);
+            scene.add(ballMesh);
+            ballMesh.castShadow = true;
         }
+    });*/
+    socket.on('meshes', (meshesData)=>{
+        (new Map(meshesData)).forEach((m,id)=>{
+            if(meshMap.has(id)) {
+                meshMap.get(id).position.copy(m.position);
+                meshMap.get(id).quaternion.copy(m.quaternion);
+            } else {
+                var ballGeometry = new THREE.SphereGeometry(0.2, 32, 32);
+                var material = new THREE.MeshLambertMaterial( { color: 0xdddddd } );
+                var ballMesh = new THREE.Mesh( ballGeometry, material);
+                meshMap.set(id,ballMesh);
+                scene.add(ballMesh);
+                ballMesh.castShadow = true;
+                ballMesh.receiveShadow = true;
+            }
+        });
+        renderer.render(scene,camera);
     });
     socket.on('marker',(mesh)=>{
         if(marker) {
             marker.position.copy(mesh.position);
-            marker.visible = mesh.visible;
+            marker.material.visible = mesh.visible;
             renderer.render(scene, camera);
         } else {
             var shape = new THREE.SphereGeometry(0.2, 8, 8);
             marker = new THREE.Mesh(shape, markerMaterial);
             scene.add(marker);
-            cubeMesh.castShadow = true;
+            marker.castShadow = true;
         }
     });
     var cannonRay = false;

@@ -25,7 +25,8 @@ var  timeStep=1/60;
 
 /////////
 
-var meshes=[], bodies=[];
+var bodies=[];
+var meshDatas = new Map();
 
 var mouseConstraint =false;
 var jointBody;
@@ -35,7 +36,7 @@ var constraintDown = false;
 io.on('connection', function(socket) {
 
 
-    let player = new CyberWorld.BasicPlayer(world, meshes, bodies);
+    let player = new CyberWorld.BasicPlayer(world, meshDatas, bodies);
     world.addBody(player.body);
 
     players.set(socket.id, player);
@@ -74,7 +75,7 @@ io.on('connection', function(socket) {
     var distance;
     socket.on('onMouseDown', (e) => {
         // Find mesh from a ray
-        var result = bodyInFront(player,meshes);
+        var result = bodyInFront();
         if (result) {
             var point = result.hitPointWorld;
             constraintDown = true;
@@ -147,6 +148,7 @@ function initCannon() {
     var boxShape = new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5));
 
     ////
+    /*
     var boxBody = new CANNON.Body({ mass: 1 });
     boxBody.addShape(boxShape);
     boxBody.position.set(1,3,3);
@@ -158,7 +160,7 @@ function initCannon() {
     boxBody.position.set(-3,3,3);
     boxBody.angularDamping = 1;
     world.addBody(boxBody);
-    bodies.push(boxBody);
+    bodies.push(boxBody);*/
 
 
     // Joint body
@@ -174,10 +176,11 @@ function initCannon() {
 
 function update() {
     world.step(timeStep);
-    for (var i in bodies) {
-        io.sockets.emit('mesh', {id: bodies[i].id, position: bodies[i].position, quaternion: bodies[i].quaternion});
-    }
+    //for (var i in bodies) {
+      //  io.sockets.emit('mesh', {id: bodies[i].id, position: bodies[i].position, quaternion: bodies[i].quaternion});
+    //}
     io.sockets.emit('players', Array.from(datas));
+    io.sockets.emit('meshes', Array.from(meshDatas));
     io.sockets.emit('marker',clickMarker.data);
 }
 

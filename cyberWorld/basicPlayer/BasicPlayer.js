@@ -1,6 +1,6 @@
 
 
-let BasicPlayer = function(world, meshes, bodies) {
+let BasicPlayer = function(world, meshDatas, bodies) {
 
     let CANNON = require('cannon');
     let THREE = require('three');
@@ -145,13 +145,16 @@ let BasicPlayer = function(world, meshes, bodies) {
     },this.timeOut);
 
     let insertElement = function() {
-        var boxShape = new CANNON.Box(new CANNON.Vec3(0.5,0.5,0.5));
-        var boxBody = new CANNON.Body({ mass: 1 });
-        boxBody.addShape(boxShape);
-        boxBody.position.set(0,2,0);
-        boxBody.linearDamping = 0.5;
-        world.addBody(boxBody);
-        bodies.push(boxBody);
+
+        var ballShape = new CANNON.Sphere(0.2);
+        var ballBody = new CANNON.Body({ mass: 1 });
+        ballBody.addShape(ballShape);
+        ballBody.position.set(0,2,0);
+        world.addBody(ballBody);
+        bodies.push(ballBody);
+
+        meshDatas.set(ballBody.id,{position: ballBody.position, quaternion: ballBody.quaternion})
+
     }
 };
 
